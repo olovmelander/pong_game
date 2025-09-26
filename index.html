@@ -9,20 +9,18 @@
     <style>
         body {
             font-family: 'Press Start 2P', cursive;
-            background-color: #0d0d0d;
-            color: #fff;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
             overflow: hidden;
+            transition: background-color 0.5s, color 0.5s;
         }
         canvas {
-            background-color: #1a1a1a;
             border-radius: 1rem;
-            box-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff;
             cursor: none;
+            transition: background-color 0.5s, box-shadow 0.5s;
         }
         .container {
             text-align: center;
@@ -31,7 +29,7 @@
             font-size: 3rem;
             margin-bottom: 1rem;
             letter-spacing: 0.2em;
-            text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+            transition: text-shadow 0.5s;
         }
         #start-message {
             position: absolute;
@@ -39,19 +37,26 @@
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 1.5rem;
-            color: #fff;
-            text-shadow: 0 0 10px #00ffff;
             animation: blink 1.5s infinite;
             pointer-events: none;
+            transition: color 0.5s, text-shadow 0.5s;
         }
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+         #theme-select {
+            font-family: 'Press Start 2P', cursive;
+        }
     </style>
 </head>
 <body>
-
+    <div id="theme-switcher" class="absolute top-4 right-4">
+        <select id="theme-select" class="bg-gray-800 text-white font-mono py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+            <option value="neon">Neon</option>
+            <option value="meditative">Meditative</option>
+        </select>
+    </div>
     <div class="container">
         <div id="score">0 - 0</div>
         <canvas id="pongCanvas"></canvas>
@@ -74,13 +79,49 @@
         let playerScore = 0;
         let aiScore = 0;
 
+        // --- Theme Management ---
+        const themes = {
+            neon: {
+                bodyBg: '#0d0d0d',
+                bodyColor: '#fff',
+                canvasBg: '#1a1a1a',
+                canvasShadow: '0 0 30px #00ffff, 0 0 60px #00ffff',
+                scoreShadow: '0 0 10px #ff00ff, 0 0 20px #ff00ff',
+                startMsgColor: '#fff',
+                startMsgShadow: '0 0 10px #00ffff',
+                playerColor: '#00ffff',
+                aiColor: '#ff00ff',
+                ballColor: '#ffffff',
+                netColor: '#555',
+                trailEffect: 'rgba(26, 26, 26, 0.4)',
+                particle: true
+            },
+            meditative: {
+                bodyBg: '#2c3e50',
+                bodyColor: '#ecf0f1',
+                canvasBg: '#34495e',
+                canvasShadow: '0 0 20px rgba(236, 240, 241, 0.5)',
+                scoreShadow: 'none',
+                startMsgColor: '#ecf0f1',
+                startMsgShadow: 'none',
+                playerColor: '#1abc9c',
+                aiColor: '#f1c40f',
+                ballColor: '#ecf0f1',
+                netColor: '#7f8c8d',
+                trailEffect: 'rgba(52, 73, 94, 0.6)',
+                particle: false
+            }
+        };
+        let currentTheme = themes.neon;
+
+
         // --- Game Objects ---
         const player = {
             x: 20,
             y: canvas.height / 2 - PADDLE_HEIGHT / 2,
             width: PADDLE_WIDTH,
             height: PADDLE_HEIGHT,
-            color: '#00ffff'
+            color: currentTheme.playerColor
         };
 
         const ai = {
@@ -88,7 +129,7 @@
             y: canvas.height / 2 - PADDLE_HEIGHT / 2,
             width: PADDLE_WIDTH,
             height: PADDLE_HEIGHT,
-            color: '#ff00ff'
+            color: currentTheme.aiColor
         };
 
         const ball = {
@@ -98,7 +139,7 @@
             speed: 7,
             velocityX: 5,
             velocityY: 5,
-            color: '#ffffff'
+            color: currentTheme.ballColor
         };
         
         // --- Particle System for collisions ---
@@ -175,22 +216,22 @@
             ctx.setLineDash([10, 15]);
             ctx.moveTo(canvas.width / 2, 0);
             ctx.lineTo(canvas.width / 2, canvas.height);
-            ctx.strokeStyle = "#555";
+            ctx.strokeStyle = currentTheme.netColor;
             ctx.lineWidth = 4;
             ctx.stroke();
             ctx.setLineDash([]); // Reset line dash
         }
 
         function render() {
-            // Clear canvas with a transparent black to create motion blur effect
-            ctx.fillStyle = 'rgba(26, 26, 26, 0.4)';
+            // Clear canvas with a theme-specific trail effect
+            ctx.fillStyle = currentTheme.trailEffect;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             drawNet();
             
             // Draw paddles
-            drawRect(player.x, player.y, player.width, player.height, player.color, player.color);
-            drawRect(ai.x, ai.y, ai.width, ai.height, ai.color, ai.color);
+            drawRect(player.x, player.y, player.width, player.height, player.color, currentTheme.particle ? player.color : 'transparent');
+            drawRect(ai.x, ai.y, ai.width, ai.height, ai.color, currentTheme.particle ? ai.color : 'transparent');
             
             // Draw ball
             drawCircle(ball.x, ball.y, ball.radius, ball.color);
@@ -257,7 +298,9 @@
             let paddle = (ball.x < canvas.width / 2) ? player : ai;
 
             if (collision(ball, paddle)) {
-                 createParticles(ball.x, ball.y, paddle.color);
+                 if (currentTheme.particle) {
+                    createParticles(ball.x, ball.y, paddle.color);
+                }
                 
                 // Calculate where the ball hit the paddle
                 let collidePoint = (ball.y - (paddle.y + paddle.height / 2));
@@ -293,6 +336,27 @@
             requestAnimationFrame(gameLoop);
         }
 
+        function applyTheme(themeName) {
+            currentTheme = themes[themeName];
+
+            // Update CSS styles
+            document.body.style.backgroundColor = currentTheme.bodyBg;
+            document.body.style.color = currentTheme.bodyColor;
+            canvas.style.backgroundColor = currentTheme.canvasBg;
+            canvas.style.boxShadow = currentTheme.canvasShadow;
+            scoreElement.style.textShadow = currentTheme.scoreShadow;
+            startMessage.style.color = currentTheme.startMsgColor;
+            startMessage.style.textShadow = currentTheme.startMsgShadow;
+
+            // Update game object colors
+            player.color = currentTheme.playerColor;
+            ai.color = currentTheme.aiColor;
+            ball.color = currentTheme.ballColor;
+
+            // Clear any existing particles
+            particles = [];
+        }
+
         // --- Event Listeners ---
         function movePaddle(evt) {
             let rect = canvas.getBoundingClientRect();
@@ -314,11 +378,22 @@
             }
         });
 
-        window.addEventListener('resize', setCanvasSize);
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            // Re-apply theme to correctly position elements if needed
+            applyTheme(themeSelect.value);
+        });
+
+        const themeSelect = document.getElementById('theme-select');
+        themeSelect.addEventListener('change', (e) => {
+            applyTheme(e.target.value);
+        });
+
 
         // --- Initialize ---
         setCanvasSize();
         updateScore();
+        applyTheme('neon'); // Apply default theme
         requestAnimationFrame(gameLoop);
 
     </script>
