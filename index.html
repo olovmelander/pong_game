@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Pong</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #0d0d0d;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #1a1a1a;
+            border-radius: 1rem;
+            box-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff;
+            cursor: none;
+        }
+        .container {
+            text-align: center;
+        }
+        #score {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            letter-spacing: 0.2em;
+            text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+        }
+        #start-message {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            color: #fff;
+            text-shadow: 0 0 10px #00ffff;
+            animation: blink 1.5s infinite;
+            pointer-events: none;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="score">0 - 0</div>
+        <canvas id="pongCanvas"></canvas>
+        <div id="start-message">Click to Start</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pongCanvas');
+        const ctx = canvas.getContext('2d');
+        const startMessage = document.getElementById('start-message');
+        const scoreElement = document.getElementById('score');
+
+        // --- Game Settings ---
+        let gameStarted = false;
+        const PADDLE_WIDTH = 15;
+        const PADDLE_HEIGHT = 120;
+        const BALL_RADIUS = 10;
+        const AI_SPEED = 6; // Controls difficulty. Lower is easier.
+
+        let playerScore = 0;
+        let aiScore = 0;
+
+        // --- Game Objects ---
+        const player = {
+            x: 20,
+            y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+            width: PADDLE_WIDTH,
+            height: PADDLE_HEIGHT,
+            color: '#00ffff'
+        };
+
+        const ai = {
+            x: canvas.width - PADDLE_WIDTH - 20,
+            y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+            width: PADDLE_WIDTH,
+            height: PADDLE_HEIGHT,
+            color: '#ff00ff'
+        };
+
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: BALL_RADIUS,
+            speed: 7,
+            velocityX: 5,
+            velocityY: 5,
+            color: '#ffffff'
+        };
+        
+        // --- Particle System for collisions ---
+        let particles = [];
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 3 + 1;
+                this.velocityX = (Math.random() - 0.5) * 4;
+                this.velocityY = (Math.random() - 0.5) * 4;
+                this.alpha = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.velocityX;
+                this.y += this.velocityY;
+                this.alpha -= 0.02;
+                this.draw();
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // --- Drawing Functions ---
+        function setCanvasSize() {
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.7);
+            canvas.width = size * 1.6; // Widescreen aspect ratio
+            canvas.height = size;
+            
+            // Recalculate positions based on new size
+            player.y = canvas.height / 2 - PADDLE_HEIGHT / 2;
+            ai.x = canvas.width - PADDLE_WIDTH - 20;
+            ai.y = canvas.height / 2 - PADDLE_HEIGHT / 2;
+            resetBall();
+        }
+
+        function drawRect(x, y, w, h, color, glowColor) {
+            ctx.fillStyle = color;
+            ctx.shadowColor = glowColor;
+            ctx.shadowBlur = 20;
+            ctx.fillRect(x, y, w, h);
+            ctx.shadowBlur = 0; // Reset shadow blur for other elements
+        }
+
+        function drawCircle(x, y, r, color) {
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2, false);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function drawNet() {
+            ctx.beginPath();
+            ctx.setLineDash([10, 15]);
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.strokeStyle = "#555";
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset line dash
+        }
+
+        function render() {
+            // Clear canvas with a transparent black to create motion blur effect
+            ctx.fillStyle = 'rgba(26, 26, 26, 0.4)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawNet();
+            
+            // Draw paddles
+            drawRect(player.x, player.y, player.width, player.height, player.color, player.color);
+            drawRect(ai.x, ai.y, ai.width, ai.height, ai.color, ai.color);
+            
+            // Draw ball
+            drawCircle(ball.x, ball.y, ball.radius, ball.color);
+            
+            // Draw particles
+            particles.forEach((particle, index) => {
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    particle.update();
+                }
+            });
+        }
+        
+        // --- Game Logic ---
+        function collision(b, p) {
+            b.top = b.y - b.radius;
+            b.bottom = b.y + b.radius;
+            b.left = b.x - b.radius;
+            b.right = b.x + b.radius;
+
+            p.top = p.y;
+            p.bottom = p.y + p.height;
+            p.left = p.x;
+            p.right = p.x + p.width;
+
+            return b.right > p.left && b.left < p.right && b.bottom > p.top && b.top < p.bottom;
+        }
+        
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speed = 7;
+            // Send the ball towards the loser
+            ball.velocityX = (ball.velocityX > 0 ? -1 : 1) * 5;
+            ball.velocityY = Math.random() > 0.5 ? 5 : -5;
+        }
+
+        function updateScore() {
+            scoreElement.textContent = `${playerScore} - ${aiScore}`;
+        }
+        
+        function update() {
+            if (!gameStarted) return;
+
+            // Ball movement
+            ball.x += ball.velocityX;
+            ball.y += ball.velocityY;
+
+            // AI paddle movement (simple AI)
+            let targetY = ball.y - ai.height / 2;
+            ai.y += (targetY - ai.y) * (AI_SPEED / 100); // Smoother AI movement
+            
+             // Keep AI paddle within bounds
+            if (ai.y < 0) ai.y = 0;
+            if (ai.y + ai.height > canvas.height) ai.y = canvas.height - ai.height;
+
+            // Ball collision with top/bottom walls
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+                ball.velocityY = -ball.velocityY;
+            }
+
+            // Determine which paddle is being hit
+            let paddle = (ball.x < canvas.width / 2) ? player : ai;
+
+            if (collision(ball, paddle)) {
+                 createParticles(ball.x, ball.y, paddle.color);
+                
+                // Calculate where the ball hit the paddle
+                let collidePoint = (ball.y - (paddle.y + paddle.height / 2));
+                collidePoint = collidePoint / (paddle.height / 2);
+
+                // Calculate angle in Radian
+                let angleRad = (Math.PI / 4) * collidePoint;
+
+                // Change the X and Y velocity direction
+                let direction = (ball.x < canvas.width / 2) ? 1 : -1;
+                ball.velocityX = direction * ball.speed * Math.cos(angleRad);
+                ball.velocityY = ball.speed * Math.sin(angleRad);
+                
+                // Increase ball speed after each hit
+                ball.speed += 0.5;
+            }
+            
+            // Scoring
+            if (ball.x - ball.radius < 0) {
+                aiScore++;
+                updateScore();
+                resetBall();
+            } else if (ball.x + ball.radius > canvas.width) {
+                playerScore++;
+                updateScore();
+                resetBall();
+            }
+        }
+
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Event Listeners ---
+        function movePaddle(evt) {
+            let rect = canvas.getBoundingClientRect();
+            let newY = evt.clientY - rect.top - player.height / 2;
+
+            // Keep player paddle within bounds
+            if (newY < 0) newY = 0;
+            if (newY + player.height > canvas.height) newY = canvas.height - player.height;
+
+            player.y = newY;
+        }
+
+        canvas.addEventListener('mousemove', movePaddle);
+
+        canvas.addEventListener('click', () => {
+            if (!gameStarted) {
+                gameStarted = true;
+                startMessage.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('resize', setCanvasSize);
+
+        // --- Initialize ---
+        setCanvasSize();
+        updateScore();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
